@@ -323,23 +323,29 @@ function handleScannedData(scannedData) {
   }
 
   const destination =
-    APPS_SCRIPT_URL +
-    '?pass=' +
-    encodeURIComponent(passToken);
+  APPS_SCRIPT_URL +
+  '?pass=' +
+  encodeURIComponent(passToken);
 
-  window.location.href = destination;
+showStatus('PASS DETECTED — OPENING DOOR CHECK-IN...');
+
+let openBtn = document.getElementById('openCheckinBtn');
+
+if (!openBtn) {
+  openBtn = document.createElement('button');
+  openBtn.id = 'openCheckinBtn';
+  openBtn.className = 'primary';
+  openBtn.textContent = '✓ OPEN DOOR CHECK-IN';
+
+  openBtn.onclick = function () {
+    window.location.assign(destination);
+  };
+
+  statusBox.insertAdjacentElement('afterend', openBtn);
 }
 
-scanBtn.addEventListener(
-  'click',
-  startCamera
-);
+openBtn.style.display = 'block';
 
-stopBtn.addEventListener(
-  'click',
-  stopCamera
-);
-</script>
-
-</body>
-</html>
+setTimeout(function () {
+  window.location.assign(destination);
+}, 700);
