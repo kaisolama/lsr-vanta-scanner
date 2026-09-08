@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>LSR / VANTA Scanner</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #0b0b0e;
+      color: #ffffff;
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 28px 18px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 460px;
+    }
+
+    .brand {
+      font-size: 11px;
+      letter-spacing: 4px;
+      opacity: 0.5;
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      font-weight: 900;
+    }
+
+    .sub {
+      margin-top: 6px;
+      opacity: 0.5;
+      font-size: 14px;
+    }
+
+    .scanner {
+      margin-top: 28px;
+      border: 1px solid #34343d;
+      background: #17171c;
+      border-radius: 20px;
+      padding: 16px;
+    }
+
+    #videoWrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background: #050506;
+      border-radius: 16px;
+      overflow: hidden;
+      display: none;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .scanBox {
+      position: absolute;
+      inset: 15%;
+      border: 2px solid rgba(255,255,255,0.9);
+      border-radius: 14px;
+      pointer-events: none;
+    }
+
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 12px;
+      padding: 17px;
+      margin-top: 14px;
+      font-size: 15px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .primary {
+      background: #ffffff;
+      color: #000000;
+    }
+
+    .secondary {
+      background: #292930;
+      color: #ffffff;
+    }
+
+    .status {
+      margin-top: 16px;
+      padding: 14px;
+      border-radius: 12px;
+      background: #101014;
+      border: 1px solid #2c2c33;
+      font-size: 13px;
+      line-height: 1.5;
+      display: none;
+      word-break: break-all;
+    }
+
+    .rule {
+      text-align: center;
+      margin-top: 28px;
+      font-size: 9px;
+      letter-spacing: 1.8px;
+      opacity: 0.3;
+      line-height: 1.8;
+    }
+
+    canvas {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="app">
+
+  <div class="brand">LSR / VANTA</div>
+  <h1>DOOR SCANNER</h1>
+  <div class="sub">Private Guest Credential Scanner</div>
+
+  <div class="scanner">
+
+    <div id="videoWrap">
+      <video id="video" playsinline autoplay muted></video>
+      <div class="scanBox"></div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <button id="scanBtn" class="primary">
+      📷 START CAMERA
+    </button>
+
+    <button id="stopBtn" class="secondary" style="display:none;">
+      STOP CAMERA
+    </button>
+
+    <div id="status" class="status"></div>
+
+  </div>
+
+  <div class="rule">
+    PRIVATE ACCESS SYSTEM<br>
+    CAMERA SCANNER<br>
+    DATABASE REMAINS SOURCE OF TRUTH.
+  </div>
+
+</div>
+
+<script>
+const APPS_SCRIPT_URL =
+  'https://script.google.com/macros/s/AKfycbyReh61IdZ-INrdtZ9gmUSWiM5uZKlyeD1XXnt4Rzz8gThptO5tuHTRB4j0vRZZ74hy/exec';
+
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', {
+  willReadFrequently: true
+});
+
+const scanBtn = document.getElementById('scanBtn');
+const stopBtn = document.getElementById('stopBtn');
+const videoWrap = document.getElementById('videoWrap');
+const statusBox = document.getElementById('status');
+
+let stream = null;
+let scanning = false;
+
+function showStatus(message) {
+  statusBox.style.display = 'block';
+  statusBox.textContent = message;
+}
+
+function stopCamera() {
+  scanning = false;
+
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+  }
+
+  stream = null;
+  video.srcObject = null;
+
+  videoWrap.style.display = 'none';
+  stopBtn.style.display = 'none';
+  scanBtn.style.display = 'block';
+
+  scanBtn.textContent = '📷 START CAMERA';
+}
+
+async function startCamera() {
+  try {
+    scanBtn.textContent = 'OPENING CAMERA...';
+    statusBox.style.display = 'none';
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: {
+          ideal: 'environment'
+        }
+      },
+      audio: false
+    });
+
+    video.srcObject = stream;
+    await video.play();
+
+    videoWrap.style.display = 'block';
+    stopBtn.style.display = 'block';
+    scanBtn.style.display = 'none';
+
+    scanning = true;
+
+    requestAnimationFrame(scanFrame);
+
+  } catch (error) {
+    console.error(error);
+
+    scanBtn.textContent = '📷 START CAMERA';
+
+    showStatus(
+      'Camera error: ' +
+      (error && error.message
+        ? error.message
+        : String(error))
+    );
+  }
+}
+
+function scanFrame() {
+  if (!scanning) {
+    return;
+  }
+
+  if (
+    video.readyState === video.HAVE_ENOUGH_DATA &&
+    video.videoWidth > 0 &&
+    video.videoHeight > 0
+  ) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    ctx.drawImage(
+      video,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+
+    const imageData = ctx.getImageData(
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+
+    const code = jsQR(
+      imageData.data,
+      imageData.width,
+      imageData.height,
+      {
+        inversionAttempts: 'attemptBoth'
+      }
+    );
+
+    if (code && code.data) {
+      const scannedData =
+        String(code.data || '').trim();
+
+      if (scannedData) {
+        stopCamera();
+
+        showStatus(
+          'PASS DETECTED — OPENING DOOR CHECK-IN...'
+        );
+
+        handleScannedData(scannedData);
+
+        return;
+      }
+    }
+  }
+
+  requestAnimationFrame(scanFrame);
+}
+
+function handleScannedData(scannedData) {
+
+  let passToken = scannedData;
+
+  try {
+    const possibleUrl = new URL(scannedData);
+
+    if (possibleUrl.searchParams.has('pass')) {
+      passToken =
+        possibleUrl.searchParams.get('pass');
+    }
+  } catch (e) {
+    // QR may contain raw pass token instead of URL.
+  }
+
+  if (!passToken) {
+    showStatus('Invalid QR.');
+    return;
+  }
+
+  const destination =
+    APPS_SCRIPT_URL +
+    '?pass=' +
+    encodeURIComponent(passToken);
+
+  window.location.href = destination;
+}
+
+scanBtn.addEventListener(
+  'click',
+  startCamera
+);
+
+stopBtn.addEventListener(
+  'click',
+  stopCamera
+);
+</script>
+
+</body>
+</html>
