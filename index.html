@@ -154,12 +154,17 @@
     </button>
 
     <div id="status" class="status"></div>
+    <div style="margin-top:24px">
+      <label for="manualPass" style="font-size:12px;opacity:.65">Or paste a private pass link / token</label>
+      <input id="manualPass" autocomplete="off" spellcheck="false" placeholder="PASS-VNT001-…" style="width:100%;margin-top:8px;padding:14px;border:1px solid #34343d;border-radius:12px;background:#0b0b0e;color:#fff;font-size:16px">
+      <button id="manualOpenBtn" class="secondary">CONTINUE WITH PASS</button>
+    </div>
 
   </div>
 
   <div class="rule">
     PRIVATE ACCESS SYSTEM<br>
-    CAMERA SCANNER<br>
+    CAMERA SCANNER · ROUTE V3<br>
     DATABASE REMAINS SOURCE OF TRUTH.
   </div>
 
@@ -302,53 +307,46 @@ function scanFrame() {
 }
 
 function handleScannedData(scannedData) {
-
-  let passToken = scannedData;
-
+  const oldButton = document.getElementById('openCheckinBtn');
+  if (oldButton) oldButton.style.display = 'none';
+  let passToken = String(scannedData || '').trim();
   try {
-    const possibleUrl = new URL(scannedData);
-
-    if (possibleUrl.searchParams.has('pass')) {
-      passToken =
-        possibleUrl.searchParams.get('pass');
+    const possibleUrl = new URL(passToken);
+    if (possibleUrl.protocol !== 'https:' || possibleUrl.hostname !== 'script.google.com') {
+      showStatus('This QR is not a VANTA private pass.');
+      return;
     }
+    passToken = (possibleUrl.searchParams.get('pass') || possibleUrl.searchParams.get('scan') || '').trim();
   } catch (e) {
-    // QR may contain raw pass token instead of URL.
+    // A raw private-pass token is also accepted.
   }
-
-  if (!passToken) {
-    showStatus('Invalid QR.');
+  if (!/^PASS-[A-Z0-9_-]+-[A-F0-9]{8,64}$/.test(passToken)) {
+    showStatus('Invalid QR. Scan a private guest pass or paste its link below.');
     return;
   }
-
-  const destination =
-  APPS_SCRIPT_URL +
-  '?pass=' +
-  encodeURIComponent(passToken);
-
-showStatus('PASS DETECTED — OPENING DOOR CHECK-IN...');
-
-let openBtn = document.getElementById('openCheckinBtn');
-
-if (!openBtn) {
-  openBtn = document.createElement('button');
-  openBtn.id = 'openCheckinBtn';
-  openBtn.className = 'primary';
-  openBtn.textContent = '✓ OPEN DOOR CHECK-IN';
-
+  const destination = new URL(APPS_SCRIPT_URL);
+  destination.searchParams.set('authuser', '0');
+  destination.searchParams.set('scan', passToken);
+  let openBtn = document.getElementById('openCheckinBtn');
+  if (!openBtn) {
+    openBtn = document.createElement('button');
+    openBtn.id = 'openCheckinBtn';
+    openBtn.className = 'primary';
+    statusBox.insertAdjacentElement('afterend', openBtn);
+  }
+  // Update on every scan so a second guest never opens the first guest's pass.
   openBtn.onclick = function () {
-    window.location.assign(destination);
+    window.location.assign(destination.toString());
   };
-
-  statusBox.insertAdjacentElement('afterend', openBtn);
+  openBtn.textContent = '✓ OPEN DOOR CHECK-IN';
+  openBtn.style.display = 'block';
+  showStatus('PASS DETECTED — Tap OPEN DOOR CHECK-IN to continue.');
 }
 
-openBtn.style.display = 'block';
-
-setTimeout(function () {
-  window.location.assign(destination);
-}, 700);
-}
+document.getElementById('manualOpenBtn').addEventListener('click', function () {
+  stopCamera();
+  handleScannedData(document.getElementById('manualPass').value);
+});
 
 scanBtn.addEventListener(
   'click',
